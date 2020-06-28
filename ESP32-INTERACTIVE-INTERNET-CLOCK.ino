@@ -50,11 +50,11 @@ struct Grain {
 #include <WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-const char* ssid     = "FTP-XXXXXX";      // SSID of local network
-const char* password = "12345678";        // Password on network
-#define NTP_OFFSET    25200               // In seconds - Time offset
-#define NTP_INTERVAL  60 * 1000           // In miliseconds
-#define NTP_ADDRESS   "1.asia.pool.ntp.org"
+const char* ssid     = "SSID";                     // SSID of local network
+const char* password = "PASSWORD";        // Password on network
+#define NTP_OFFSET    -25200                      // In seconds - Time offset
+#define NTP_INTERVAL  60 * 1000                   // In miliseconds
+#define NTP_ADDRESS   "0.us.pool.ntp.org"
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
@@ -127,8 +127,8 @@ void pixelTask(void *param) {
   float accelY = (accelVector.YAxis * -1) + yOffset;
   float accelZ = accelVector.ZAxis;
 
-  int16_t ax = -accelX / 256,       // Transform accelerometer axes
-          ay =  -accelY / 256,      // to grain coordinate space
+  int16_t ax = (-accelX + 2750) / 256,       // Transform accelerometer axes
+          ay = (-accelY + 11500) / 256,      // to grain coordinate space
           az = abs(accelZ) / 2048;  // Random motion factor
   az = (az >= 3) ? 1 : 4 - az;      // Clip & invert
   ax -= az;                         // Subtract motion factor from X, Y
@@ -287,6 +287,7 @@ void setup(void) {
   timeClient.begin();
   //Serial.begin(115200);
   //Serial.println("Initialize MPU6050");
+
   // Define your display layout here, e.g. 1/32 step
   display.begin(32);
   display.setMuxDelay(0,1,0,0,0);   // Delay multiplexing - Important for some panel with slow multiplexer

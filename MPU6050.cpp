@@ -47,7 +47,7 @@ bool MPU6050::begin(mpu6050_dps_t scale, mpu6050_range_t range, int mpua, int SD
     dg.XAxis = 0;
     dg.YAxis = 0;
     dg.ZAxis = 0;
-    useCalibrate = false;
+    useCalibrate = false;  //default value is false
 
     // Reset threshold values
     tg.XAxis = 0;

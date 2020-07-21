@@ -33,6 +33,7 @@ https://github.com/porrey/ledmatrixide
 #define WIDTH        64 // Display width in pixels
 #define HEIGHT       64 // Display height in pixels
 #define MAX_FPS      45 // Maximum redraw rate, frames/second
+int CHK = 1;            // Flip Flop pixels
 
 // The 'sand' grains exist in an integer coordinate space that's 256X
 // the scale of the pixel grid, allowing them to move and interact at
@@ -51,9 +52,9 @@ struct Grain {
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 const char* ssid     = "SSID";                     // SSID of local network
-const char* password = "PASSWORD";        // Password on network
-#define NTP_OFFSET    -25200                      // In seconds - Time offset
-#define NTP_INTERVAL  60 * 1000                   // In miliseconds
+const char* password = "PASSWORD";                 // Password on network
+#define NTP_OFFSET    -25200                       // In seconds - Time offset from UTC 0
+#define NTP_INTERVAL  60 * 1000                    // In miliseconds
 #define NTP_ADDRESS   "0.us.pool.ntp.org"
 
 WiFiUDP ntpUDP;
@@ -127,8 +128,22 @@ void pixelTask(void *param) {
   float accelY = (accelVector.YAxis * -1) + yOffset;
   float accelZ = accelVector.ZAxis;
 
-  int16_t ax = (-accelX + 2750) / 256,       // Transform accelerometer axes
-          ay = (-accelY + 11500) / 256,      // to grain coordinate space
+//
+// NEW CODE BEGINS TO FLIP FLOP GRAVITY EVERY 15 SECONDS
+//
+int16_t ax, ay, az;
+if (CHK == 1) {
+          ay = (-accelY - 1000) / 256;      // to grain coordinate space          ORIGINAL 11500 then 11750
+}
+if (CHK == 0) {
+          ay = (-accelY - 5000) / 256;      // to grain coordinate space          ORIGINAL 11500
+}
+//
+// END NEW CODE
+//
+
+  ax = (-accelX + 2750) / 256;       // Transform accelerometer axes
+          //ay = (-accelY + 11750) / 256,      // to grain coordinate space          ORIGINAL 11500
           az = abs(accelZ) / 2048;  // Random motion factor
   az = (az >= 3) ? 1 : 4 - az;      // Clip & invert
   ax -= az;                         // Subtract motion factor from X, Y
@@ -149,8 +164,8 @@ void pixelTask(void *param) {
     v2 = (int32_t)grain[i].vx * grain[i].vx + (int32_t)grain[i].vy * grain[i].vy;
     if (v2 > 65536) { // If v^2 > 65536, then v > 256
       v = sqrt((float)v2); // Velocity vector magnitude
-      grain[i].vx = (int)(256.0 * (float)grain[i].vx / v); // Maintain heading
-      grain[i].vy = (int)(256.0 * (float)grain[i].vy / v); // Limit magnitude
+      grain[i].vx = ((int)(256.0 * (float)grain[i].vx / v)); // Maintain heading
+      grain[i].vy = ((int)(256.0 * (float)grain[i].vy / v)); // Limit magnitude
     }
   }
 
@@ -303,7 +318,7 @@ void setup(void) {
   imgWrapper.setFont(&FreeSansBold9pt7b);
   imgWrapper.setTextColor(myWHITE);
   //imgWrapper.setTextSize(2);  
-  imgWrapper.print("CLOCK");
+  imgWrapper.print("BAKER");
   
   for (i = 0; i < N_GRAINS; i++) { // For each sand grain...
 
@@ -357,6 +372,19 @@ void loop() {
 
   String hhmm = hoursStr + ":" + minuteStr ;
 
+//
+//Flip Flop grains every 15 seconds so when clock is sitting vertical, it keeps things looking interesting...
+//
+  if (secondStr == "00" || secondStr == "30") {
+    CHK = 1;
+}
+  if (secondStr == "15" || secondStr == "45") {
+    CHK = 0;
+  }
+//
+// END NEW CODE
+//
+
   display.setCursor(2, 16);
   display.setFont(&FreeSansBold12pt7b);
   display.setTextColor(myBLUE);
@@ -367,7 +395,7 @@ void loop() {
   display.setFont(&FreeSansBold9pt7b);
   display.setTextColor(myWHITE);
   //display.setTextSize(2);  
-  display.print("CLOCK");  
+  display.print("BAKER");  
   
   display.setCursor(12, 60);
   display.setFont(&FreeSansBold18pt7b);

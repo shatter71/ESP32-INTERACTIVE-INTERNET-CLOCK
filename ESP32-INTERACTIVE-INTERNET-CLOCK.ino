@@ -30,10 +30,15 @@ https://github.com/porrey/ledmatrixide
 #include "imgBufferGFX.h"
 
 #define N_GRAINS     512 // Number of grains of sand
-#define WIDTH        64 // Display width in pixels
-#define HEIGHT       64 // Display height in pixels
-#define MAX_FPS      45 // Maximum redraw rate, frames/second
-int CHK = 1;            // Flip Flop pixels
+#define WIDTH        64  // Display width in pixels
+#define HEIGHT       64  // Display height in pixels
+#define MAX_FPS      45  // Maximum redraw rate, frames/second
+#define BEGIN_HOUR  "22" // Hour for night mode to begin (24hr)
+#define END_HOUR    "07" // Hour for night mode to end (24hr)
+int CHK = 1;             // Flip Flop pixels
+int NIGHT_MODE = 1;      // Set Night Mode, 1 = ON, 0 = OFF
+int NIGHT_CHK = 0;       // 0 = Display On, 1 = Display Off 
+int dst = 1;             // daylight savings time checking variable
 
 // The 'sand' grains exist in an integer coordinate space that's 256X
 // the scale of the pixel grid, allowing them to move and interact at
@@ -51,14 +56,15 @@ struct Grain {
 #include <WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-const char* ssid     = "SSID";                     // SSID of local network
-const char* password = "PASSWORD";                 // Password on network
-#define NTP_OFFSET    -25200                       // In seconds - Time offset from UTC 0
-#define NTP_INTERVAL  60 * 1000                    // In miliseconds
+const char* ssid     = "SSID";                      // SSID of local network
+const char* password = "PASSOWRD";                  // Password on network
+#define NTP_OFFSET  8                               // In hours - Time offset from UTC 0
+#define NTP_INTERVAL  60 * 1000                     // In miliseconds
 #define NTP_ADDRESS   "0.us.pool.ntp.org"
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
+NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET*60*(-60), NTP_INTERVAL);
+//NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 // ----------------------------
 // Wiring and Display setup
@@ -132,12 +138,12 @@ void pixelTask(void *param) {
 // NEW CODE BEGINS TO FLIP FLOP GRAVITY EVERY 15 SECONDS
 //
 int16_t ax, ay, az;
-if (CHK == 1) {
-          ay = (-accelY - 1000) / 256;      // to grain coordinate space          ORIGINAL 11500 then 11750
-}
-if (CHK == 0) {
-          ay = (-accelY - 5000) / 256;      // to grain coordinate space          ORIGINAL 11500
-}
+  if (CHK == 1) {
+    ay = (-accelY - 1000) / 256;      // to grain coordinate space          ORIGINAL 11500 then 11750
+  }
+  if (CHK == 0) {
+    ay = (-accelY - 5000) / 256;      // to grain coordinate space          ORIGINAL 11500
+  }
 //
 // END NEW CODE
 //
@@ -342,16 +348,15 @@ void setup(void) {
   xTaskCreatePinnedToCore(pixelTask, "PixelTask1", 5000, 0, (2 | portPRIVILEGE_BIT), &xHandle, 0);
 }
 
+void timeupdate(int daylight) {
+  NTPClient timeClient(ntpUDP, NTP_ADDRESS, (NTP_OFFSET - daylight)*60*(-60), NTP_INTERVAL);
+}
+
 // MAIN LOOP - RUNS ONCE PER FRAME OF ANIMATION ----------------------------
 
 void loop() {
 
   display.clearDisplay();
-  for (int i = 0; i < N_GRAINS; i++) {
-    int yPos = grain[i].pos / WIDTH;
-    int xPos = grain[i].pos % WIDTH;
-    display.drawPixel(xPos , yPos, grain[i].colour);
-  }
 
   timeClient.update();
   //int dd = timeClient.getDay();
@@ -361,6 +366,21 @@ void loop() {
   //String formattedTime = timeClient.getFormattedTime();
 
   unsigned long rawTime = timeClient.getEpochTime();
+  
+  //
+  // BEGIN NEW CODE
+  //
+  struct tm *ptm = gmtime ((time_t *)&rawTime);  //set up to adjust automatically for daylight savings time
+  int daylight = ptm->tm_isdst;                  //see if DST is in effect or not, values are 0 or 1
+  if (dst != daylight)                           //When switching from DST to non-DST or the other way around, cause timeupdate() function to be called
+    {                                            
+      dst = daylight;                            
+      timeupdate(daylight);                      
+    }                                            
+  //
+  // END NEW CODE
+  //
+
   unsigned long hours = (rawTime % 86400L) / 3600;
   String hoursStr = hours < 10 ? "0" + String(hours) : String(hours);
 
@@ -372,35 +392,103 @@ void loop() {
 
   String hhmm = hoursStr + ":" + minuteStr ;
 
+  //
+  //When clock should be displaying stuff, this section of code is executed
+  //
+  if (NIGHT_CHK == 0) {
+    
+    for (int i = 0; i < N_GRAINS; i++) {
+      int yPos = grain[i].pos / WIDTH;
+      int xPos = grain[i].pos % WIDTH;
+      display.drawPixel(xPos , yPos, grain[i].colour);
+    }
+
+  //
+  // BEGIN NEW CODE
+  //
+  //
+  //Flip Flop grains every 15 seconds so when clock is sitting vertical, it keeps things looking interesting...
+  //
+    if (secondStr == "00" || secondStr == "30") {
+      CHK = 1;
+    }
+    if (secondStr == "15" || secondStr == "45") {
+      CHK = 0;
+    }
+  //
+  // END NEW CODE
+  //
+  
+    display.setCursor(2, 16);
+    display.setFont(&FreeSansBold12pt7b);
+    display.setTextColor(myBLUE);
+    //display.setTextSize(2); 
+    display.print(hhmm);
+    
+    display.setCursor(0, 32);
+    display.setFont(&FreeSansBold9pt7b);
+    display.setTextColor(myWHITE);
+    //display.setTextSize(2);  
+    display.print("BAKER");  
+    
+    display.setCursor(12, 60);
+    display.setFont(&FreeSansBold18pt7b);
+    display.setTextColor(myBLUE);
+    //display.setTextSize(2); 
+    display.print(secondStr);
+    display.showBuffer();
+  }
+
+  //
+  // BEGIN NEW CODE
+  //
+  //
+  //When night mode become active, set all the grain and text colors to black
+  //
+  if (NIGHT_CHK == 1) {
+    for (int i = 0; i < N_GRAINS; i++) {
+      grain[i].colour = myBLACK;
+    }
+
+    display.setCursor(2, 16);
+    display.setFont(&FreeSansBold12pt7b);
+    display.setTextColor(myBLACK);
+    //display.setTextSize(2); 
+    display.print(hhmm);
+    
+    display.setCursor(0, 32);
+    display.setFont(&FreeSansBold9pt7b);
+    display.setTextColor(myBLACK);
+    //display.setTextSize(2);  
+    display.print("BAKER");  
+    
+    display.setCursor(12, 60);
+    display.setFont(&FreeSansBold18pt7b);
+    display.setTextColor(myBLACK);
+    //display.setTextSize(2); 
+    display.print(secondStr);
+    display.showBuffer();
+    
+  }
+
 //
-//Flip Flop grains every 15 seconds so when clock is sitting vertical, it keeps things looking interesting...
+// Check if NIGHT MODE is set and then if screen should be on or off
 //
-  if (secondStr == "00" || secondStr == "30") {
-    CHK = 1;
-}
-  if (secondStr == "15" || secondStr == "45") {
-    CHK = 0;
+  if (NIGHT_MODE == 1) {
+    if (hoursStr == BEGIN_HOUR) {
+     NIGHT_CHK = 1;
+    }
+    if (hoursStr == END_HOUR) {
+     if (NIGHT_CHK == 1){
+        for (int i = 0; i < N_GRAINS; i++) {
+          grain[i].colour = myCOLORS[i%NUM_COLOURS];      //Assign colors back to the grains
+        }
+      }
+     NIGHT_CHK = 0;
+    }
   }
 //
 // END NEW CODE
 //
-
-  display.setCursor(2, 16);
-  display.setFont(&FreeSansBold12pt7b);
-  display.setTextColor(myBLUE);
-  //display.setTextSize(2); 
-  display.print(hhmm);
   
-  display.setCursor(0, 32);
-  display.setFont(&FreeSansBold9pt7b);
-  display.setTextColor(myWHITE);
-  //display.setTextSize(2);  
-  display.print("BAKER");  
-  
-  display.setCursor(12, 60);
-  display.setFont(&FreeSansBold18pt7b);
-  display.setTextColor(myBLUE);
-  //display.setTextSize(2); 
-  display.print(secondStr);
-  display.showBuffer();
 }
